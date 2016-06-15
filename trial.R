@@ -1,13 +1,16 @@
 library(zoo)
-library(ggvis)
+library(shinydashboard)
 library(shinyBS)
 setwd("/home/amogh/Desktop")
 
-attach(amogh)
+data<-read.csv("~/Desktop/SCM_TAM.txt", sep=",",na.strings=c("","NA"))
 
-data <- amogh
+cc=is.na(data$start_date)
+m=which(cc==c("TRUE"))
+data=data[-m,]
+data=data[,-which(names(data) == "sales_rep_data")]
 
-subset(data,opportunity_account_region=="APAC",select = c(opportunity_account_region,opportunity_account_subregion))
+
 #data$opportunity_account_region <- as.character(data$opportunity_account_region)
 #data$opportunity_account_region[data$opportunity_account_region == NA]<-"North America"
 
@@ -39,10 +42,43 @@ max_deal <- max(as.numeric(data$number_total_usd))
 library(shiny)
 library(plotly)
 ui <- fluidPage(
-  h1("TAM Data Visualization"),
+#  h1("TAM Data Visualization"),
+  tags$head(tags$style(
+    HTML('
+         #sidebar {
+            background-color: #B0E2FF;
+                      height:900px;
+                    position: relative;
+                         top: 20px;
+                        left: 20px;
+         }
+#tabs {
+ background-color:#B0E2FF;
+}
+
+        body, label, input, button, select { 
+          font-family: "Arial";
+        }')
+  )),
+  tags$head(
+    tags$style(HTML("
+      @import url('//fonts.googleapis.com/css?family=Lobster|Cabin:400,700');
+      
+      h1 {
+        background-color: #778899;
+      }
+
+    "))
+  ),
   
-  
+  headerPanel("TAM Data Visualization"),
   sidebarPanel(
+    tags$head(
+      tags$style(type="text/css", "select { max-height: 1540px; }"),
+      tags$style(type="text/css", ".span4 { max-height: 1590px; }"),
+      tags$style(type="text/css", ".well { max-height: 1580px; }")
+    ),
+    id="sidebar",
     selectInput("geo", "Please select a geography:", choices = as.character(unique(data$opportunity_account_region))),
     
     uiOutput("secondSelection"),
@@ -50,36 +86,52 @@ ui <- fluidPage(
     #selectInput("reg", "Please select a Region:", choices = reg_choices),
    
     #sliderInput("inSlider", "Opportunity Close Date", min=m, max=ma, value = m),
-    dateRangeInput("month",  label = h3("Date input"), min = min_date, max = max_date,  start = NULL, end = NULL, format = "m-yyyy" ,startview = "month"),
+    dateRangeInput("month",  label = h3("Date input"), min = min_date, max = max_date, start = Sys.Date() , end = Sys.Date() + 1500, format = "m-yyyy" ,startview = "month"),
+    textInput("caption", "Caption:", "Data Summary")
    # sliderInput("date", label = h3("Date input"), value = min_date,min=min_date,max=max_date,format="####.00"),
-    sliderInput("inSlider", "Deal Size", min=min_deal, max=max_deal, value = min_deal)
+  #  sliderInput("inSlider", "Deal Size", min=min_deal, max=max_deal, value = min_deal)
     #selectInput("tam", "Please select TAM type:", choices = as.character(unique(data$sku_type)))
   ),
+  
   mainPanel(
-    tabsetPanel(
+    br(),
+    tabsetPanel(id="tabs",
       tabPanel("Data table", dataTableOutput("myTable")),
       tabPanel("Data chart",
                # fluidRow(...)
+               fluidRow(class="myRow1",
+                 column(6,plotlyOutput(outputId="plot1", width="500px",height="500px")),  
+                 column(6,plotlyOutput(outputId="plot4", width="500px",height="500px"))
+               ),
                fluidRow(
-                 column(6,plotlyOutput(outputId="plot1", width="600px",height="300px")),  
-                 column(6,plotOutput(outputId="plot2", width="600px",height="300px"))
-               )
+                 class="myRow2",
+                 div="r1",
+                 column(6,plotlyOutput(outputId="plot2", width="500px",height="500px")),
+                 column(6,plotlyOutput(outputId="plot3", width="500px",height="500px"))
+               ),
+               tags$head(tags$style("
+                         .myRow1{height:550px;position: relative;top: 20px;	border-bottom: 1px solid #ccc;}
+                         .myRow2{height:1750px;position: relative;top: 35px;}
+                         r1{border-right: 1px solid #ccc;}"
+                        ))
             
       )
     )
   )
+  
 )
 
 server <- function(input,output,session)    {
-  
+ 
+ 
   output$myTable<-renderDataTable({
     data})
 
   output$secondSelection <- renderUI({
-    selectInput("Reg", "Region:", choices = c("All",as.character(data[data$opportunity_account_region==input$geo,"opportunity_account_subregion"])))
+    selectInput("Reg", "Please select a Region:", choices = c("All",as.character(data[data$opportunity_account_region==input$geo,"opportunity_account_subregion"])))
   })
   output$thirdSelection <- renderUI({
-    selectInput("tam", "Tam:", choices = c("All",as.character(data[data$opportunity_account_subregion==input$Reg,"sku_type"])))
+    selectInput("tam", "Please select a TAM type:", choices = c("All",as.character(data[data$opportunity_account_subregion==input$Reg,"sku_type"])))
   })
   
   
@@ -95,9 +147,23 @@ server <- function(input,output,session)    {
      Num_tam<-aggregate(x = data_filter1$sku_type, by = list(data_filter1$opportunity_account_region,as.yearmon(data_filter1$start_date)),FUN = length)
      print(Num_tam)
      #print(min(Num_tam$Group.2))
+     f <- list(
+       family = "Courier New, monospace",
+       size = 18,
+       color = "#7f7f7f"
+     )
+     x <- list(
+       title = "Start Date",
+       titlefont = f
+     )
+     y <- list(
+       title = "Number of TAMs",
+       titlefont = f
+     )
     plot_ly(Num_tam, x = as.Date(Num_tam$Group.2),y = Num_tam$x,mode = "markers")
-   
-    
+    layout(title = "TAMs by Start Date",
+           xaxis = x, yaxis = y)
+  
    }
    else if(input$tam=="All"){
      data<-subset(data , as.yearmon(data$start_date) >= as.yearmon(input$month[1]) & as.yearmon(data$start_date) <= as.yearmon(input$month[2]))
@@ -107,8 +173,23 @@ server <- function(input,output,session)    {
      #data_filter4 <- subset(data_filter3,start_date==input$date,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,start_date))
      Num_tam<-aggregate(x = data_filter3$sku_type, by = list(data_filter3$opportunity_account_region,data_filter3$opportunity_account_subregion,as.yearmon(data_filter3$start_date)),FUN = length)
      #print(Num_tam)
+     f <- list(
+       family = "Courier New, monospace",
+       size = 18,
+       color = "#7f7f7f"
+     )
+     x <- list(
+       title = "Start Date",
+       titlefont = f
+     )
+     y <- list(
+       title = "Number of TAMs",
+       titlefont = f
+     )
      
      plot_ly(Num_tam, x = as.Date(Num_tam$Group.3), y = Num_tam$x,mode = "markers")
+     layout(title = "TAMs by Start Date",
+            xaxis = x, yaxis = y)
    }
    else
    {
@@ -119,18 +200,31 @@ server <- function(input,output,session)    {
    #data_filter4 <- subset(data_filter3,start_date==input$date,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,start_date))
    Num_tam<-aggregate(x = data_filter3$sku_type, by = list(data_filter3$opportunity_account_region,data_filter3$opportunity_account_subregion,data_filter3$sku_type,as.yearmon(data_filter3$start_date)),FUN = length)
    #print(Num_tam)
-  
+   f <- list(
+     family = "Courier New, monospace",
+     size = 18,
+     color = "#7f7f7f"
+   )
+   x <- list(
+     title = "Start Date",
+     titlefont = f
+   )
+   y <- list(
+     title = "Number of TAMs",
+     titlefont = f
+   )
   
    plot_ly(Num_tam, x = as.Date(Num_tam$Group.4), y = Num_tam$x,mode = "markers")
   #plot(Num_tam$Group.4, Num_tam$x)
-   
+   layout(title = "TAMs by Start Date",
+          xaxis = x, yaxis = y)
  }
    
   
 })
  
-
- output$plot2 <- renderPlot({
+##########################################
+ output$plot2 <- renderPlotly({
    if(input$Reg=="All")
    {
      data_filter1 <- subset(data,opportunity_account_region==input$geo,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,start_date))
@@ -140,13 +234,22 @@ server <- function(input,output,session)    {
      tam_type <- aggregate(x = tam_filter$sku_type, by = list(tam_filter$sku_type),FUN = length)
      #j<-c(1,2,3,4,5)
      tam_type <- tam_type[order(-tam_type$x),] 
-     
-     barloc<-barplot(tam_type$x,beside=TRUE,col="Skyblue",ylim=c(0,50+max(tam_type$x)),xaxt="n")
-     axis(side = 1, 
-          at=barloc, 
-          lab=tam_type$Group.1,
-          las=3, srt=45)
-     
+     f <- list(
+       family = "Courier New, monospace",
+       size = 18,
+       color = "#7f7f7f"
+     )
+     x <- list(
+       title = "",
+       titlefont = f
+     )
+     y <- list(
+       title = "Number of TAMs",
+       titlefont = f
+     )
+     plot_ly(x = tam_type$Group.1, y = tam_type$x, type = "bar", marker = list(color = toRGB("sky blue")),barmode = "horizontal")
+     layout(title = "TAMs by type",
+            xaxis = x, yaxis = y)
    }
    else
    {
@@ -160,57 +263,179 @@ server <- function(input,output,session)    {
    #j<-c(1,2,3,4,5)
    tam_type <- tam_type[order(-tam_type$x),] 
    
-   barloc<-barplot(tam_type$x,beside=TRUE,col="Skyblue",ylim=c(0,50+max(tam_type$x)),xaxt="n")
-   axis(side = 1, 
-        at=barloc, 
-        lab=tam_type$Group.1,
-        las=3, srt=45)
+   f <- list(
+     family = "Courier New, monospace",
+     size = 18,
+     color = "#7f7f7f"
+   )
+   x <- list(
+     title = "",
+     titlefont = f
+   )
+   y <- list(
+     title = "Number of TAMs",
+     titlefont = f
+   )
+   plot_ly(x = tam_type$Group.1, y = tam_type$x, type = "bar", marker = list(color = toRGB("sky blue")))
+   layout(title = "TAMs by type",
+          xaxis = x, yaxis = y)
  }
  
  }) 
  
  #############################################
- output$plot3 <- renderPlot({
+ output$plot3 <- renderPlotly({
    if(input$Reg=="All")
    {
-     data_filter1 <- subset(data,opportunity_account_region==input$geo,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,start_date))
+     data_filter1 <- subset(data,opportunity_account_region==input$geo,select = c(opportunity_account_region,opportunity_account_subregion,opportunity_account_name,start_date))
      tam_filter <- subset(data_filter1,as.yearmon(data_filter1$start_date) >= as.yearmon(input$month[1]) & as.yearmon(data_filter1$start_date) <= as.yearmon(input$month[2]),
-                          select = c(sku_type,start_date))
+                          select = c(opportunity_account_name,start_date))
      
-     tam_type <- aggregate(x = tam_filter$sku_type, by = list(tam_filter$sku_type),FUN = length)
+     tam_type <- aggregate(x = tam_filter$opportunity_account_name, by = list(tam_filter$opportunity_account_name),FUN = length)
      #j<-c(1,2,3,4,5)
      tam_type <- tam_type[order(-tam_type$x),] 
      
-     barloc<-barplot(tam_type$x,beside=TRUE,col="Skyblue",ylim=c(0,50+max(tam_type$x)),xaxt="n")
-     axis(side = 1, 
-          at=barloc, 
-          lab=tam_type$Group.1,
-          las=3, srt=45)
+     f <- list(
+       family = "Courier New, monospace",
+       size = 18,
+       color = "#7f7f7f"
+     )
+     x <- list(
+       title = "",
+       titlefont = f
+     )
+     y <- list(
+       title = "Number of TAMs",
+       titlefont = f
+     )
+     plot_ly(x = tam_type$Group.1, y = tam_type$x, type = "bar", marker = list(color = toRGB("sky blue")),enumerated= "h")
+     layout(title = " TAMs by Account",
+            xaxis = x, yaxis = y)
      
    }
    else
    {
-     data_filter1 <- subset(data,opportunity_account_region==input$geo,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,start_date))
-     data_filter2 <- subset(data_filter1,opportunity_account_subregion==input$Reg,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,start_date))
+     data_filter1 <- subset(data,opportunity_account_region==input$geo,select = c(opportunity_account_region,opportunity_account_subregion,opportunity_account_name,start_date))
+     data_filter2 <- subset(data_filter1,opportunity_account_subregion==input$Reg,select = c(opportunity_account_region,opportunity_account_subregion,opportunity_account_name,start_date))
      
      tam_filter <- subset(data_filter2,as.yearmon(data_filter2$start_date) >= as.yearmon(input$month[1]) & as.yearmon(data_filter2$start_date) <= as.yearmon(input$month[2]),
-                          select = c(sku_type,start_date))
+                          select = c(opportunity_account_name,start_date))
      # print(tam_filter)
-     tam_type <- aggregate(x = tam_filter$sku_type, by = list(tam_filter$sku_type),FUN = length)
+     tam_type <- aggregate(x = tam_filter$opportunity_account_name, by = list(tam_filter$opportunity_account_name),FUN = length)
      #j<-c(1,2,3,4,5)
      tam_type <- tam_type[order(-tam_type$x),] 
      
-     barloc<-barplot(tam_type$x,beside=TRUE,col="Skyblue",ylim=c(0,50+max(tam_type$x)),xaxt="n")
-     axis(side = 1, 
-          at=barloc, 
-          lab=tam_type$Group.1,
-          las=3, srt=45)
+     f <- list(
+       family = "Courier New, monospace",
+       size = 18,
+       color = "#7f7f7f"
+     )
+     x <- list(
+       title = "",
+       titlefont = f
+     )
+     y <- list(
+       title = "Number of TAMs",
+       titlefont = f
+     )
+     plot_ly(x = tam_type$Group.1, y = tam_type$x, type = "bar", marker = list(color = toRGB("sky blue")),enumerated= "h")
+     layout(title = " TAMs by Account",
+            xaxis = x, yaxis = y)
    }
    
  }) 
-
+ 
+ #################################################################################
+ output$plot4 <- renderPlotly({
+   if(input$Reg=="All" && input$tam=="All")
+   {
+     
+     #print(as.yearmon(input$month[1]))
+     #print(as.yearmon(input$month[2]))
+     data<-subset(data , as.yearmon(data$end_date) >= as.yearmon(input$month[1]) & as.yearmon(data$end_date) <= as.yearmon(input$month[2]))
+     # print(data$end_date)
+     data_filter1 <- subset(data,opportunity_account_region==input$geo,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,end_date))
+     Num_tam<-aggregate(x = data_filter1$sku_type, by = list(data_filter1$opportunity_account_region,as.yearmon(data_filter1$end_date)),FUN = length)
+     print(Num_tam)
+     #print(min(Num_tam$Group.2))
+     f <- list(
+       family = "Courier New, monospace",
+       size = 18,
+       color = "#7f7f7f"
+     )
+     x <- list(
+       title = "End Date",
+       titlefont = f
+     )
+     y <- list(
+       title = "Number of TAMs",
+       titlefont = f
+     )
+     plot_ly(Num_tam, x = as.Date(Num_tam$Group.2),y = Num_tam$x,mode = "markers")
+     layout(title = "TAMs by End Date",
+            xaxis = x, yaxis = y)
+     
+   }
+   else if(input$tam=="All"){
+     data<-subset(data , as.yearmon(data$end_date) >= as.yearmon(input$month[1]) & as.yearmon(data$end_date) <= as.yearmon(input$month[2]))
+     data_filter1 <- subset(data,opportunity_account_region==input$geo,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,end_date))
+     data_filter3 <- subset(data_filter1,opportunity_account_subregion==input$Reg,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,end_date))
+     
+     #data_filter4 <- subset(data_filter3,end_date==input$date,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,end_date))
+     Num_tam<-aggregate(x = data_filter3$sku_type, by = list(data_filter3$opportunity_account_region,data_filter3$opportunity_account_subregion,as.yearmon(data_filter3$end_date)),FUN = length)
+     #print(Num_tam)
+     f <- list(
+       family = "Courier New, monospace",
+       size = 18,
+       color = "#7f7f7f"
+     )
+     x <- list(
+       title = "End Date",
+       titlefont = f
+     )
+     y <- list(
+       title = "Number of TAMs",
+       titlefont = f
+     )
+     plot_ly(Num_tam, x = as.Date(Num_tam$Group.3),y = Num_tam$x,mode = "markers")
+     
+     
+     layout(title = "TAMs by End Date",
+            xaxis = x, yaxis = y)
+   }
+   else
+   {
+     data<-subset(data , as.yearmon(data$end_date) >= as.yearmon(input$month[1]) & as.yearmon(data$end_date) <= as.yearmon(input$month[2]))
+     data_filter1 <- subset(data,opportunity_account_region==input$geo,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,end_date))
+     data_filter2 <- subset(data_filter1,opportunity_account_subregion==input$Reg,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,end_date))
+     data_filter3 <- subset(data_filter2,sku_type==input$tam,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,end_date))
+     #data_filter4 <- subset(data_filter3,end_date==input$date,select = c(opportunity_account_region,opportunity_account_subregion,sku_type,end_date))
+     Num_tam<-aggregate(x = data_filter3$sku_type, by = list(data_filter3$opportunity_account_region,data_filter3$opportunity_account_subregion,data_filter3$sku_type,as.yearmon(data_filter3$end_date)),FUN = length)
+     #print(Num_tam)
+     f <- list(
+       family = "Courier New, monospace",
+       size = 18,
+       color = "#7f7f7f"
+     )
+     x <- list(
+       title = "End Date",
+       titlefont = f
+     )
+     y <- list(
+       title = "Number of TAMs",
+       titlefont = f
+     )
+     plot_ly(Num_tam, x = as.Date(Num_tam$Group.4),y = Num_tam$x,mode = "markers")
+     
+     
+     layout(title = "TAMs by End Date",
+            xaxis = x, yaxis = y)
+   }
+   
+   
+ })
+ 
 }
-
 
 
 shinyApp(ui = ui , server = server)
